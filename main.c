@@ -5,8 +5,6 @@
 #include <pthread.h>
 #include <time.h>
 
-double get_current_time();
-
 struct bank_account {
     int balance;
     char* identifier;
@@ -17,6 +15,13 @@ struct bank_account_node {
     struct bank_account_node *next;
 } typedef bank_account_node;
 
+
+//One mutex for every situation where volatility may occur
+
+//As the transaction count is stored in a single value, a mutex is used to prevent a race condition.
+
+//I know that rand() is generally not threadsafe, but as an attempt to only have one thread access the
+//internal state, I figured I could use a mutex.
 const int BANK_MUTEX_INDEX = 0;
 const int TRANSACTION_COUNT_MUTEX_INDEX = 1;
 const int RANDOM_MUTEX_INDEX = 2;
@@ -27,6 +32,7 @@ pthread_mutex_t mutex_list[] = {
     PTHREAD_MUTEX_INITIALIZER
 };
 
+//Linked list of bank accounts
 bank_account_node* bank_account_chain;
 
 void mutex_setup();
@@ -38,7 +44,7 @@ bank_account *get_bank_account(char* identifier); // linear search for account b
 int transfer_money(bank_account *from, bank_account *to, int amount); // Transfers money from account 'from' to account 'to'. Returns 1 if transfer is OK.
 
 
-/*....testing methods....*/
+//Test methods
 void setup_bank_chain_test_data();//creates test data.
 void *setup_bank_chain_test_thread(void *void_ptr);//tests transactions between accounts on a seperate thread.
 
@@ -47,6 +53,8 @@ void *setup_bank_chain_test_thread(void *void_ptr);//tests transactions between 
 #define TEST_THREAD_COUNT 100
 #define TEST_MAX_TRANSACTION_COUNT 1000 // limit 100.000, increase thread count accordingly
 
+
+double get_current_time();
 int transaction_count = 0;
 int program_running = 1;
 /*...............*/
@@ -87,8 +95,8 @@ void mutex_setup() {
     }
 }
 
-// adds a bank account to the bank account chain
-// Thread Safe
+//Adds account object to the linked list
+//Thread Safe
 void add_bank_account(bank_account* account) {
     pthread_mutex_lock(&mutex_list[BANK_MUTEX_INDEX]);
     if (bank_account_chain == NULL) {
@@ -107,16 +115,16 @@ void add_bank_account(bank_account* account) {
     pthread_mutex_unlock(&mutex_list[BANK_MUTEX_INDEX]);
 }
 
-// "create_bank_account" chain is called from add_bank_account
-// do not call this "create_bank_account" manually as it isn't thread safe!
+//Only used as internal function
+//DO NOT CALL THIS
 void create_bank_chain(bank_account* account) {
     bank_account_chain = malloc(sizeof(bank_account_node));
     bank_account_chain->account = account;
     bank_account_chain->next = NULL;
 }
 
-// lists all of the bank accounts
-// Thread Safe
+//lists all bank accounts
+//Thread Safe
 void list_accounts() {
     pthread_mutex_lock(&mutex_list[BANK_MUTEX_INDEX]);
     bank_account_node *current_account_node = bank_account_chain;
@@ -141,12 +149,12 @@ void setup_bank_chain_test_data() {
         bank_account->identifier = malloc(sizeof(char) * 20);
 
         sprintf(bank_account->identifier, "bank account %d", i+1);
-        bank_account->balance = (rand() % 20000) + 10000; // sample accounts have between 10k and 30k balance
+        bank_account->balance = (rand() % 20000) + 10000; // accounts have between 10k and 30k balance
         add_bank_account(bank_account);
     }
 }
 
-// Transfers money from account 'from' to account 'to'. Returns 1 if transfer is OK.
+// Transfers money from param 1, to param 2. Returns 1 if transfer succeeded
 // Thread Safe.
 int transfer_money(bank_account *from, bank_account *to, int amount) {
     pthread_mutex_lock(&mutex_list[BANK_MUTEX_INDEX]);
@@ -162,9 +170,9 @@ int transfer_money(bank_account *from, bank_account *to, int amount) {
     return 1;
 }
 
-// Linear search for account by identifier. Thread Safe. Worst case n^2.
-// Returns NULL if no unit was found!
-// Thread Safe.
+//Search for account from id
+//Returns NULL if nothing was found
+//Thread Safe.
 bank_account *get_bank_account(char* identifier) {
     pthread_mutex_lock(&mutex_list[BANK_MUTEX_INDEX]);
     bank_account_node *current_account_node = bank_account_chain;
